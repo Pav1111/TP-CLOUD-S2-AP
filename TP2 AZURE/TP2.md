@@ -337,11 +337,11 @@ Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
 - ### ``Ping`` :
 
 ````bash
-antoine@CLOUD--node2-vm:~$ ping 10.0.1.4
+micro@CLOUD--node2-vm:~$ ping 10.0.1.4
 PING 10.0.1.4 (10.0.1.4) 56(84) bytes of data.
 64 bytes from 10.0.1.4: icmp_seq=1 ttl=64 time=1.35 ms
 
-antoine@CLOUD--node1-vm:~$ ping 10.0.1.5
+micro@CLOUD--node1-vm:~$ ping 10.0.1.5
 PING 10.0.1.5 (10.0.1.5) 56(84) bytes of data.
 64 bytes from 10.0.1.5: icmp_seq=1 ttl=64 time=1.15 ms
 ````
@@ -352,92 +352,23 @@ PING 10.0.1.5 (10.0.1.5) 56(84) bytes of data.
 
 🌞 **Intégrer la gestion de `cloud-init`**
 
-- faire pop une VM Ubuntu 22.04 qui utilise `cloud-init` au premier boot
-  - on parle donc d'un plan `main.tf` qui pop qu'une seule machine
-  - vous devez ajouter une ligne pour que la machine utilise un fichier `cloud-init.txt`
-- ce `cloud-init.txt` doit faire pareil qu'à la partie précédente :
-  - installer Docker sur la machine
-  - ajoutez un user, avec un nom différent que le user créé par Azure
-    - il a un password défini
-    - clé SSH publique déposée
-    - membre du groupe `docker`
-  - l'image Docker `alpine:latest` doit être téléchargée
-
-🌞 **Proof !**
-
-- livrez votre `main.tf` dans le compte-rendu
-- livrez votre `cloud-init.txt` dans le compte-rendu
-- vous pouvez vous connecter sans password en SSH sur le nouveau user (ptite commande `ssh` dans le compte-rendu)
-
+`variables.tf`
 ```
-PS C:\Users\alexa> ssh micro@51.136.10.37
-Welcome to Ubuntu 22.04.5 LTS (GNU/Linux 6.8.0-1021-azure x86_64)
+variable "prefix" {
+  description = "Project prefix"
+  default     = "partie3"
+}
 
- * Documentation:  https://help.ubuntu.com
- * Management:     https://landscape.canonical.com
- * Support:        https://ubuntu.com/pro
-
- System information as of Wed Mar 19 22:25:51 UTC 2025
-
-  System load:  0.01              Processes:             116
-  Usage of /:   8.1% of 28.89GB   Users logged in:       0
-  Memory usage: 36%               IPv4 address for eth0: 10.0.1.4
-  Swap usage:   0%
-
- * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
-   just raised the bar for easy, resilient and secure K8s cluster deployment.
-
-   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
-
-Expanded Security Maintenance for Applications is not enabled.
-
-0 updates can be applied immediately.
-
-Enable ESM Apps to receive additional future security updates.
-See https://ubuntu.com/esm or run: sudo pro status
-
-New release '24.04.2 LTS' available.
-Run 'do-release-upgrade' to upgrade to it.
-
-
-Last login: Wed Mar 19 22:24:50 2025 from 88.127.136.119
-To run a command as administrator (user "root"), use "sudo <command>".
-See "man sudo_root" for details.
-
-micro@partie4A-vm:~$ docker images
-REPOSITORY   TAG       IMAGE ID       CREATED       SIZE
-alpine       latest    aded1e1a5b37   4 weeks ago   7.83MB
+variable "location" {
+  description = "Azure region"
+  default     = "West Europe"
+}
 ```
-
-### B. Go further
-
-🌞 **Moar `cloud-init` and Terraform configuration**
-
-- adaptez le plan Terraform `main.tf` et le fichier `cloud-init.txt` précédents
-- avec `cloud-init` : déposez un `docker-compose.yml` automatiquement dans la machine
-  - il doit être déposé au chemin : `/opt/wikijs/docker-compose.yml`
-  - pour le contenu, c'est le `docker-compose.yml` de la doc officielle de WikiJS (pareil qu'au TP1)
-- toujours avec `cloud-init`, le `docker-compose.yml` est automatiquement démarré
-- il faudra éditer le `docker-compose.yml` :
-  - par défaut, WikiJS écoute sur le port 3000
-  - vous devrez modifier le `docker-compose.yml` pour que **ce port soit partagé sur le port 10101 de la machine hôte**
-- côté Terraform, dans le `main.tf` :
-  - le Network Security Group associé à l'interface autorise le traffic sur le port 10101 spécifiquement
-
-🌞 **Proof !**
-
-- livrez votre `main.tf` dans le compte-rendu
-- livrez votre `cloud-init.txt` dans le compte-rendu
-- livrez votre `docker-compose.yml` dans le compte-rendu
-- vous pouvez vous connecter sur l'interface Web de WikiJS en visitant `http://IP:10101`
-  - un ptit `curl` dans le compte-rendu
-
-`main.tf` : 
-
+`main.tf`
 ```
 provider "azurerm" {
   features {}
-  subscription_id = ""
+  subscription_id = "..."
 }
 
 resource "azurerm_resource_group" "main" {
@@ -483,6 +414,7 @@ resource "azurerm_network_security_group" "ssh" {
   name                = "ssh"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
+
   security_rule {
     access                     = "Allow"
     direction                  = "Inbound"
@@ -492,42 +424,34 @@ resource "azurerm_network_security_group" "ssh" {
     source_port_range          = "*"
     source_address_prefix      = "*"
     destination_port_range     = "22"
-    destination_address_prefix = azurerm_network_interface.vm_nic.private_ip_address
-  }
-  
-  security_rule {
-    access                     = "Allow"
-    direction                  = "Inbound"
-    name                       = "AllowWikiJS"
-    priority                   = 110
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    source_address_prefix      = "*"
-    destination_port_range     = "10101"
     destination_address_prefix = "*"
   }
 }
-resource "azurerm_network_interface_security_group_association" "pow" {
+
+resource "azurerm_network_interface_security_group_association" "vm" {
   network_interface_id      = azurerm_network_interface.vm_nic.id
   network_security_group_id = azurerm_network_security_group.ssh.id
+
+  depends_on = [azurerm_linux_virtual_machine.vm]
 }
 
-resource "azurerm_linux_virtual_machine" "wikijs" {
+resource "azurerm_linux_virtual_machine" "vm" {
   name                = "${var.prefix}-vm"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
   size                = "Standard_B1s"
-  admin_username      = "diego"
+  admin_username      = "micro"
+
   network_interface_ids = [
     azurerm_network_interface.vm_nic.id
   ]
 
   admin_ssh_key {
     username   = "micro"
-    public_key = file("C:\\Users\\PC\\.ssh\\id_rsa.pub")
+    public_key = file("C:\\Users\\alexa\\.ssh\\id_rsa.pub")
   }
 
-  custom_data = base64encode(file("C:\\Users\\PC\\Documents\\Cours\\Cloud\\TP2\\CloudInit\\2\\cloud-init.txt"))
+  custom_data = base64encode(file("C:\\Users\\alexa\\Documents\\CoursEfrei\\Cloud\\terraform3\\cloud-init.txt"))
 
   source_image_reference {
     publisher = "Canonical"
@@ -541,34 +465,19 @@ resource "azurerm_linux_virtual_machine" "wikijs" {
     caching              = "ReadWrite"
   }
 }
-```
-
-`variables.tf`: 
 
 ```
-variable "prefix" {
-  description = "Project prefix"
-  default     = "partie4B"
-}
-
-variable "location" {
-  description = "Azure region"
-  default     = "West Europe"
-}
-```
-
-`cloud-init.txt `: 
-
+`cloud-init.txt`
 ```
 #cloud-config
 users:
   - default
-  - name: user
+  - name: micro
     sudo: sudo
     groups: sudo, docker
     shell: /bin/bash
     ssh_authorized_keys:
-      - <clé publique>
+      - ssh-rsa <...>
 
 package_update: true
 package_upgrade: true
@@ -582,7 +491,204 @@ write_files:
     permissions: '0644'
     content: |
       -----BEGIN PGP PUBLIC KEY BLOCK-----
-                <...>
+
+      ....
+      -----END PGP PUBLIC KEY BLOCK-----
+
+apt:
+  sources:
+    docker.list:
+      source: deb [arch=amd64 signed-by=/usr/share/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $RELEASE stable
+
+packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-compose-plugin
+
+runcmd:
+  - sudo docker pull alpine:latest
+```
+
+🌞 **Proof !**
+```
+PS C:\Users\alexa\Documents\CoursEfrei\Cloud\terraform3> ssh user@52.148.202.135
+Welcome to Ubuntu 22.04.5 LTS (GNU/Linux 6.8.0-1021-azure x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Sun Mar 23 11:05:45 UTC 2025
+
+  System load:  0.71              Processes:             120
+  Usage of /:   8.1% of 28.89GB   Users logged in:       0
+  Memory usage: 36%               IPv4 address for eth0: 10.0.1.4
+  Swap usage:   0%
+
+
+Expanded Security Maintenance for Applications is not enabled.
+
+0 updates can be applied immediately.
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+New release '24.04.2 LTS' available.
+Run 'do-release-upgrade' to upgrade to it.
+
+
+Last login: Sun Mar 23 11:03:59 2025 from 91.169.101.209
+To run a command as administrator (user "root"), use "sudo <command>".
+See "man sudo_root" for details.
+
+user@partie3C-vm:~$ docker images
+REPOSITORY   TAG       IMAGE ID       CREATED       SIZE
+alpine       latest    aded1e1a5b37   5 weeks ago   7.83MB
+user@partie3C-vm:~$
+```
+
+### B. Go further
+
+`main.tf`
+```
+provider "azurerm" {
+  features {}
+  subscription_id = "074aa5b4-e4ab-42f9-807d-4ee508b26e98"
+}
+
+resource "azurerm_resource_group" "main" {
+  name     = "${var.prefix}-resources"
+  location = var.location
+}
+
+resource "azurerm_virtual_network" "main" {
+  name                = "${var.prefix}-network"
+  address_space       = ["10.0.0.0/16"]
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+}
+
+resource "azurerm_subnet" "internal" {
+  name                 = "internal"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = ["10.0.1.0/24"]
+}
+
+resource "azurerm_public_ip" "pip" {
+  name                = "${var.prefix}-pip"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  allocation_method   = "Static"
+}
+
+resource "azurerm_network_interface" "vm_nic" {
+  name                = "${var.prefix}-vm-nic"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+
+  ip_configuration {
+    name                          = "primary"
+    subnet_id                     = azurerm_subnet.internal.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.pip.id
+  }
+}
+
+resource "azurerm_network_security_group" "ssh" {
+  name                = "ssh"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+
+  security_rule {
+    access                     = "Allow"
+    direction                  = "Inbound"
+    name                       = "ssh"
+    priority                   = 100
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    source_address_prefix      = "*"
+    destination_port_range     = "22"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    access                     = "Allow"
+    direction                  = "Inbound"
+    name                       = "AllowWikiJS"
+    priority                   = 110
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    source_address_prefix      = "*"
+    destination_port_range     = "10101"
+    destination_address_prefix = "*"
+  }
+}
+
+resource "azurerm_network_interface_security_group_association" "pow" {
+  network_interface_id      = azurerm_network_interface.vm_nic.id
+  network_security_group_id = azurerm_network_security_group.ssh.id
+}
+
+resource "azurerm_linux_virtual_machine" "wikijs" {
+  name                = "${var.prefix}-vm"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  size                = "Standard_B1s"
+  admin_username      = "micro"
+
+  network_interface_ids = [
+    azurerm_network_interface.vm_nic.id
+  ]
+
+  admin_ssh_key {
+    username   = "micro"
+    public_key = file("C:\\Users\\alexa\\.ssh\\id_rsa.pub")
+  }
+
+  custom_data = base64encode(file("C:\\Users\\alexa\\Documents\\CoursEfrei\\Cloud\\terraform4\\cloud-init.txt"))
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "0001-com-ubuntu-server-jammy"
+    sku       = "22_04-lts"
+    version   = "latest"
+  }
+
+  os_disk {
+    storage_account_type = "Standard_LRS"
+    caching              = "ReadWrite"
+  }
+}
+
+```
+`cloud-init.txt`
+```
+#cloud-config
+users:
+  - default
+  - name: user
+    sudo: sudo
+    groups: sudo, docker
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-rsa <...>
+
+package_update: true
+package_upgrade: true
+
+groups:
+  - docker
+
+write_files:
+  - path: /usr/share/keyrings/docker.asc
+    owner: root:root
+    permissions: '0644'
+    content: |
+      -----BEGIN PGP PUBLIC KEY BLOCK-----
+
+      ...
       -----END PGP PUBLIC KEY BLOCK-----
   - path: /opt/wikijs/docker-compose.yml
     owner: root:root
@@ -632,11 +738,27 @@ packages:
 
 runcmd:
   - docker compose -f /opt/wikijs/docker-compose.yml up -d
-
 ```
-
+variable.tf
 ```
-PC@DESKTOP-JESDF82 MINGW64 ~
-$ curl http://20.16.130.165:10101 | tail -n1
-<div><p>Bonjour !</p></div></template><template slot="comments"><div><comments></comments></div></template></page></div></body></html>
+variable "prefix" {
+  description = "Project prefix"
+  default     = "partie3D"
+}
+
+variable "location" {
+  description = "Azure region"
+  default     = "West Europe"
+}
+```  
+🌞 **Proof !**
+```
+micro@ MINGW64 ~
+$ curl http://52.232.41.218:10101 | tail -n2
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100  3017  100  3017    0     0  20774      0 --:--:-- --:--:-- --:--:-- 20806
+</script><link type="text/css" rel="stylesheet" href="/_assets/css/app.0e32c5b5f7b7df293dc5.css"><script type="text/javascript" src="/_assets/js/runtime.js?1738531300"></script><script type="text/javascript" src="/_assets/js/app.js?1738531300"></script></head><body><div id="root"><page locale="en" path="home" title="j'ai fini" description="" :tags="[]" created-at="2025-03-23T11:51:52.054Z" updated-at="2025-03-23T11:51:52.054Z" author-name="Administrator" :author-id="1" editor="ckeditor" :is-published="true" toc="W10=" :page-id="1" sidebar="W3siaSI6InNkaS0xIiwiayI6ImxpbmsiLCJsIjoiSG9tZSIsImMiOiJtZGktaG9tZSIsInkiOiJob21lIiwidCI6Ii8ifV0=" nav-mode="MIXED" comments-enabled effective-permissions="eyJjb21tZW50cyI6eyJyZWFkIjp0cnVlLCJ3cml0ZSI6ZmFsc2UsIm1hbmFnZSI6ZmFsc2V9LCJoaXN0b3J5Ijp7InJlYWQiOmZhbHNlfSwic291cmNlIjp7InJlYWQiOmZhbHNlfSwicGFnZXMiOnsicmVhZCI6dHJ1ZSwid3JpdGUiOmZhbHNlLCJtYW5hZ2UiOmZhbHNlLCJkZWxldGUiOmZhbHNlLCJzY3JpcHQiOmZhbHNlLCJzdHlsZSI6ZmFsc2V9LCJzeXN0ZW0iOnsibWFuYWdlIjpmYWxzZX19" edit-shortcuts="eyJlZGl0RmFiIjp0cnVlLCJlZGl0TWVudUJhciI6ZmFsc2UsImVkaXRNZW51QnRuIjp0cnVlLCJlZGl0TWVudUV4dGVybmFsQnRuIjp0cnVlLCJlZGl0TWVudUV4dGVybmFsTmFtZSI6IkdpdEh1YiIsImVkaXRNZW51RXh0ZXJuYWxJY29uIjoibWRpLWdpdGh1YiIsImVkaXRNZW51RXh0ZXJuYWxVcmwiOiJodHRwczovL2dpdGh1Yi5jb20vb3JnL3JlcG8vYmxvYi9tYWluL3tmaWxlbmFtZX0ifQ==" filename="home.html"><template slot="contents"><div><p>tp fini&nbsp;</p>
+</div></template><template slot="comments"><div><comments></comments></div></template></page></div></body></html>
+
 ```
